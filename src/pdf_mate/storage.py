@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import chromadb
 import numpy as np
+
+import chromadb
 
 
 @dataclass

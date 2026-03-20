@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .llm import LLMBackend, Message, create_llm_backend
+from .llm import LLMBackend, create_llm_backend
 
 
 @dataclass
@@ -60,6 +60,7 @@ class DocumentSummarizer:
             text: Full document text.
             filename: Source filename (used for title generation).
             page_count: Number of pages in the document.
+
         Returns:
             DocumentSummary with summary and key points.
         """
@@ -104,7 +105,7 @@ class DocumentSummarizer:
             Message(
                 role="user",
                 content=(
-                    f"Please summarize the following document:\n\n"
+                    "Please summarize the following document:\n\n"
                     f"{truncated_text}"
                 ),
             ),
