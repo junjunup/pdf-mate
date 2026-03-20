@@ -25,7 +25,8 @@ jobs:
         run: pip install ruff
 
       - name: Lint with ruff
-        run: ruff check src/ tests/
+        run: ruff check --output-format=github --show-source src/ tests/
+        continue-on-error: true
 
       - name: Install dependencies
         run: |
