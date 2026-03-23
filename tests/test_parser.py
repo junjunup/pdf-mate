@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 import pytest
 from unittest.mock import MagicMock, patch
 
-from pdf_mate.parser import PDFParser, PDFContent, TextBlock
+from pdf_mate.parser import PDFParser, PDFContent, Table, TextBlock
 
 
 class TestTextBlock:
@@ -101,7 +104,6 @@ class TestPDFParser:
 
         parser = PDFParser()
         # Create a temp file to avoid file check
-        import tempfile
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
             temp_path = f.name
 
@@ -110,5 +112,4 @@ class TestPDFParser:
             assert content.page_count == 1
             assert len(content.text_blocks) == 0
         finally:
-            import os
             os.unlink(temp_path)

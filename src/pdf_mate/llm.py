@@ -1,11 +1,11 @@
-"""LLM interface module: unified interface for multiple LLM backends."""
+﻿"""LLM interface module: unified interface for multiple LLM backends."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -24,8 +24,8 @@ class LLMConfig:
     temperature: float = 0.3
     max_tokens: int = 4096
     top_p: float = 1.0
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -137,8 +137,8 @@ class OllamaBackend(LLMBackend):
 def create_llm_backend(
     provider: str = "openai",
     model: str = "gpt-3.5-turbo",
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
     temperature: float = 0.3,
     max_tokens: int = 4096,
 ) -> LLMBackend:

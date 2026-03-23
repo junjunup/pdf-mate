@@ -1,9 +1,8 @@
-"""Embedding module: text vectorization for RAG retrieval."""
+﻿"""Embedding module: text vectorization for RAG retrieval."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import numpy as np
 
@@ -30,7 +29,7 @@ class SentenceTransformerBackend(EmbeddingBackend):
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        device: Optional[str] = None,
+        device: str | None = None,
         batch_size: int = 32,
     ):
         """Initialize the embedding backend.
@@ -72,8 +71,8 @@ class OpenAIEmbeddingBackend(EmbeddingBackend):
     def __init__(
         self,
         model: str = "text-embedding-3-small",
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
         batch_size: int = 100,
     ):
         self.model = model
@@ -110,8 +109,8 @@ class OpenAIEmbeddingBackend(EmbeddingBackend):
 def create_embedding_backend(
     provider: str = "local",
     model_name: str = "all-MiniLM-L6-v2",
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> EmbeddingBackend:
     """Factory function to create an embedding backend.
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -44,7 +43,7 @@ def main(
 @app.command(name="parse")
 def parse_pdf(
     file_path: Path = typer.Argument(..., help="Path to the PDF file.", exists=True),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o", help="Save extracted text to a file."
     ),
     format: str = typer.Option(
@@ -98,7 +97,7 @@ def parse_pdf(
 def ocr_pdf(
     file_path: Path = typer.Argument(..., help="Path to the PDF file.", exists=True),
     language: str = typer.Option("eng+chi_sim", "--lang", "-l", help="OCR language."),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o", help="Save OCR text to a file."
     ),
 ):
@@ -134,10 +133,10 @@ def summarize_pdf(
         "concise", "--style", "-s", help="Summary style: concise, detailed, bullets."
     ),
     model: str = typer.Option("gpt-3.5-turbo", "--model", "-m", help="LLM model name."),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None, "--api-key", help="LLM API key (or set OPENAI_API_KEY env var)."
     ),
-    base_url: Optional[str] = typer.Option(
+    base_url: str | None = typer.Option(
         None, "--base-url", help="Custom API base URL."
     ),
 ):
@@ -204,10 +203,10 @@ def ask_question(
     embedding: str = typer.Option(
         "local", "--embedding", "-e", help="Embedding provider: local, openai."
     ),
-    api_key: Optional[str] = typer.Option(
+    api_key: str | None = typer.Option(
         None, "--api-key", help="LLM API key (or set OPENAI_API_KEY env var)."
     ),
-    base_url: Optional[str] = typer.Option(
+    base_url: str | None = typer.Option(
         None, "--base-url", help="Custom API base URL."
     ),
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of context chunks."),

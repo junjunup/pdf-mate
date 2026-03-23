@@ -1,9 +1,8 @@
-"""OCR module: extract text from scanned PDF pages and images."""
+﻿"""OCR module: extract text from scanned PDF pages and images."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import fitz  # PyMuPDF
 
@@ -18,7 +17,7 @@ class OCREngine:
         self,
         language: str = "eng+chi_sim",
         dpi: int = 300,
-        tessdata_path: Optional[str] = None,
+        tessdata_path: str | None = None,
     ):
         """Initialize the OCR engine.
 
@@ -52,7 +51,7 @@ class OCREngine:
         return self._tesseract, self._pil_image
 
     def extract_text_from_pdf(
-        self, file_path: str | Path, page_numbers: Optional[list[int]] = None
+        self, file_path: str | Path, page_numbers: list[int] | None = None
     ) -> list[tuple[int, str]]:
         """Extract text from a PDF using OCR.
 

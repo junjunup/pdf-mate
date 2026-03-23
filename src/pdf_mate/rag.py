@@ -1,9 +1,8 @@
-"""RAG module: Retrieval-Augmented Generation for PDF Q&A."""
+﻿"""RAG module: Retrieval-Augmented Generation for PDF Q&A."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import tiktoken
 
@@ -28,17 +27,17 @@ class RAGConfig:
     # LLM
     llm_provider: str = "openai"
     llm_model: str = "gpt-3.5-turbo"
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
 
     # Embedding
     embedding_provider: str = "local"
     embedding_model: str = "all-MiniLM-L6-v2"
-    embedding_api_key: Optional[str] = None
-    embedding_base_url: Optional[str] = None
+    embedding_api_key: str | None = None
+    embedding_base_url: str | None = None
 
     # Storage
-    persist_directory: Optional[str] = None
+    persist_directory: str | None = None
     collection_name: str = "pdf_mate"
 
 
@@ -69,7 +68,7 @@ class TextSplitter:
         return len(text)
 
     def split_text(
-        self, text: str, metadata: Optional[dict] = None
+        self, text: str, metadata: dict | None = None
     ) -> list[Chunk]:
         """Split text into overlapping chunks.
 
@@ -120,7 +119,7 @@ class TextSplitter:
 class RAGEngine:
     """RAG engine for PDF question answering."""
 
-    def __init__(self, config: Optional[RAGConfig] = None):
+    def __init__(self, config: RAGConfig | None = None):
         self.config = config or RAGConfig()
         self._splitter = TextSplitter(
             chunk_size=self.config.chunk_size,
@@ -136,7 +135,7 @@ class RAGEngine:
             collection_name=self.config.collection_name,
             persist_directory=self.config.persist_directory,
         )
-        self._llm: Optional[LLMBackend] = None
+        self._llm: LLMBackend | None = None
 
     def _get_llm(self) -> LLMBackend:
         if self._llm is None:
@@ -152,7 +151,7 @@ class RAGEngine:
         self,
         text: str,
         source_name: str,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> int:
         """Index a document's text for RAG retrieval.
 
@@ -173,7 +172,7 @@ class RAGEngine:
 
         return len(chunks)
 
-    def query(self, question: str, n_results: Optional[int] = None) -> RAGAnswer:
+    def query(self, question: str, n_results: int | None = None) -> RAGAnswer:
         """Ask a question and get a RAG-powered answer.
 
         Args:

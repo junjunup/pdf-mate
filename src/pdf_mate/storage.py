@@ -1,9 +1,9 @@
-"""Vector storage module: manage document chunks in ChromaDB."""
+﻿"""Vector storage module: manage document chunks in ChromaDB."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -24,7 +24,7 @@ class VectorStore:
     def __init__(
         self,
         collection_name: str = "pdf_mate",
-        persist_directory: Optional[str] = None,
+        persist_directory: str | None = None,
     ):
         """Initialize the vector store.
 
@@ -53,8 +53,8 @@ class VectorStore:
     def add(
         self,
         chunks: list[Chunk],
-        embeddings: Optional[list[np.ndarray]] = None,
-        ids: Optional[list[str]] = None,
+        embeddings: list[np.ndarray | None] = None,
+        ids: list[str | None] = None,
     ) -> None:
         """Add chunks to the vector store.
 
@@ -86,10 +86,10 @@ class VectorStore:
 
     def query(
         self,
-        query_embedding: Optional[np.ndarray] = None,
-        query_text: Optional[str] = None,
+        query_embedding: np.ndarray | None = None,
+        query_text: str | None = None,
         n_results: int = 5,
-        where: Optional[dict] = None,
+        where: dict | None = None,
     ) -> list[tuple[Chunk, float]]:
         """Query the vector store for similar chunks.
 
@@ -125,7 +125,7 @@ class VectorStore:
 
         return chunks_with_scores
 
-    def delete(self, source_name: Optional[str] = None) -> None:
+    def delete(self, source_name: str | None = None) -> None:
         """Delete all chunks from a specific source.
 
         Args:

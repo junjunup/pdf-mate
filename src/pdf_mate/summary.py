@@ -1,9 +1,8 @@
-"""Summary module: generate intelligent document summaries."""
+﻿"""Summary module: generate intelligent document summaries."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .llm import LLMBackend, create_llm_backend
 
@@ -14,8 +13,8 @@ class SummaryConfig:
 
     llm_provider: str = "openai"
     llm_model: str = "gpt-3.5-turbo"
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
     max_summary_length: int = 500
     style: str = "concise"  # "concise", "detailed", "bullets"
 
@@ -34,9 +33,9 @@ class DocumentSummary:
 class DocumentSummarizer:
     """Generate AI-powered summaries for PDF documents."""
 
-    def __init__(self, config: Optional[SummaryConfig] = None):
+    def __init__(self, config: SummaryConfig | None = None):
         self.config = config or SummaryConfig()
-        self._llm: Optional[LLMBackend] = None
+        self._llm: LLMBackend | None = None
 
     def _get_llm(self) -> LLMBackend:
         if self._llm is None:
