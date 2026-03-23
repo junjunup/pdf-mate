@@ -39,3 +39,16 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# WorkBuddy
+.workbuddy/
+
+# Temporary output files
+coverage_final.txt
+ruff_output*.txt
+ruff_fix*.txt
+test_output.txt
+test_results*.txt
+test_full_output.txt
+test_final_output.txt
+test_web_output.txt

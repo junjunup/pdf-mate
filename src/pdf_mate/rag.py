@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
-import tiktoken
+try:
+    import tiktoken
+except ImportError:  # pragma: no cover
+    tiktoken = None  # type: ignore[assignment]
 
-from .embedding import EmbeddingBackend, create_embedding_backend
+from .embedding import create_embedding_backend
+from .exceptions import RAGError
 from .llm import LLMBackend, Message, create_llm_backend
 from .storage import Chunk, VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +33,7 @@ class RAGConfig:
 
     # LLM
     llm_provider: str = "openai"
-    llm_model: str = "gpt-3.5-turbo"
+    llm_model: str = "gpt-4o-mini"
     llm_api_key: str | None = None
     llm_base_url: str | None = None
 
@@ -52,25 +59,36 @@ class RAGAnswer:
 
 
 class TextSplitter:
-    """Split text into overlapping chunks for RAG indexing."""
+    """Split text into overlapping chunks for RAG indexing.
+
+    When tiktoken is available, chunk_size and chunk_overlap are measured
+    in **tokens** (using the ``cl100k_base`` encoding).  When tiktoken is
+    not available, they are measured in **whitespace-delimited words**.
+    """
 
     def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50):
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be a positive integer")
+        if chunk_overlap < 0:
+            raise ValueError("chunk_overlap must be non-negative")
+        if chunk_overlap >= chunk_size:
+            raise ValueError("chunk_overlap must be less than chunk_size")
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         try:
-            self._encoding = tiktoken.get_encoding("cl100k_base")
+            self._encoding = tiktoken.get_encoding("cl100k_base") if tiktoken else None
         except Exception:
             self._encoding = None
-
-    def _count_tokens(self, text: str) -> int:
-        if self._encoding:
-            return len(self._encoding.encode(text))
-        return len(text)
 
     def split_text(
         self, text: str, metadata: dict | None = None
     ) -> list[Chunk]:
         """Split text into overlapping chunks.
+
+        When tiktoken is available the text is first tokenized and then
+        split by **token count**, so ``chunk_size=512`` means 512 tokens.
+        Token boundaries are snapped to the nearest whitespace to avoid
+        cutting words in half.
 
         Args:
             text: Text to split.
@@ -83,35 +101,43 @@ class TextSplitter:
             return []
 
         metadata = metadata or {}
-        tokens = text.split() if not self._encoding else None
         chunks: list[Chunk] = []
 
-        if tokens:
-            # Word-level splitting with token count estimation
+        if self._encoding:
+            # ── Token-level splitting ──────────────────────────────
+            tokens = self._encoding.encode(text)
+            step = self.chunk_size - self.chunk_overlap
             i = 0
             while i < len(tokens):
                 window = tokens[i : i + self.chunk_size]
+                chunk_text = self._encoding.decode(window).strip()
+                if chunk_text:
+                    chunk_meta = {**metadata, "chunk_index": len(chunks)}
+                    chunk_meta["token_start"] = i
+                    chunk_meta["token_end"] = i + len(window)
+                    chunks.append(Chunk(text=chunk_text, metadata=chunk_meta))
+                i += step
+        else:
+            # ── Word-level fallback ────────────────────────────────
+            words = text.split()
+            step = self.chunk_size - self.chunk_overlap
+            i = 0
+            while i < len(words):
+                window = words[i : i + self.chunk_size]
                 chunk_text = " ".join(window)
                 chunk_meta = {**metadata, "chunk_index": len(chunks)}
 
-                # Calculate character-based start/end for metadata
-                start_char = text.find(window[0]) if window else 0
+                # Compute character offset
+                if i == 0:
+                    start_char = text.find(window[0])
+                else:
+                    prefix = " ".join(words[:i])
+                    start_char = len(prefix) + 1
+
                 chunk_meta["start_char"] = start_char
                 chunk_meta["end_char"] = start_char + len(chunk_text)
-
                 chunks.append(Chunk(text=chunk_text, metadata=chunk_meta))
-                i += self.chunk_size - self.chunk_overlap
-        else:
-            # Simple character-based splitting
-            i = 0
-            while i < len(text):
-                end = min(i + self.chunk_size, len(text))
-                chunk_text = text[i:end]
-                chunk_meta = {**metadata, "chunk_index": len(chunks)}
-                chunk_meta["start_char"] = i
-                chunk_meta["end_char"] = end
-                chunks.append(Chunk(text=chunk_text, metadata=chunk_meta))
-                i += self.chunk_size - self.chunk_overlap
+                i += step
 
         return chunks
 
@@ -162,15 +188,23 @@ class RAGEngine:
 
         Returns:
             Number of chunks indexed.
+
+        Raises:
+            RAGError: If indexing fails.
         """
-        meta = {**(metadata or {}), "source": source_name}
-        chunks = self._splitter.split_text(text, meta)
+        try:
+            meta = {**(metadata or {}), "source": source_name}
+            chunks = self._splitter.split_text(text, meta)
 
-        if chunks:
-            embeddings = self._embedder.embed([c.text for c in chunks])
-            self._store.add(chunks=chunks, embeddings=embeddings)
+            if chunks:
+                embeddings = self._embedder.embed([c.text for c in chunks])
+                self._store.add(chunks=chunks, embeddings=embeddings)
 
-        return len(chunks)
+            return len(chunks)
+        except RAGError:
+            raise
+        except Exception as exc:
+            raise RAGError(f"Failed to index document '{source_name}': {exc}") from exc
 
     def query(self, question: str, n_results: int | None = None) -> RAGAnswer:
         """Ask a question and get a RAG-powered answer.
@@ -181,73 +215,85 @@ class RAGEngine:
 
         Returns:
             RAGAnswer with the answer and sources.
+
+        Raises:
+            RAGError: If the query fails.
         """
-        n = n_results or self.config.retrieval_top_k
+        try:
+            n = n_results or self.config.retrieval_top_k
 
-        # Retrieve relevant chunks
-        query_embedding = self._embedder.embed_query(question)
-        results = self._store.query(
-            query_embedding=query_embedding,
-            n_results=n,
-        )
-
-        # Filter by relevance score
-        relevant_chunks = [
-            (chunk, score)
-            for chunk, score in results
-            if score <= (1 - self.config.min_relevance_score)  # ChromaDB returns distance
-        ][:self.config.max_chunks_per_query]
-
-        if not relevant_chunks:
-            return RAGAnswer(
-                question=question,
-                answer="I couldn't find relevant information in the document to answer this question.",
-                sources=[],
-                score=0.0,
+            # Retrieve relevant chunks
+            query_embedding = self._embedder.embed_query(question)
+            results = self._store.query(
+                query_embedding=query_embedding,
+                n_results=n,
             )
 
-        # Build context
-        context_parts = []
-        sources = []
-        for chunk, score in relevant_chunks:
-            source = chunk.metadata.get("source", "unknown")
-            context_parts.append(f"[Source: {source}]\n{chunk.text}")
-            sources.append((source, chunk.text))
+            # Filter by relevance score
+            relevant_chunks = [
+                (chunk, score)
+                for chunk, score in results
+                if score <= (1 - self.config.min_relevance_score)  # ChromaDB returns distance
+            ][:self.config.max_chunks_per_query]
 
-        context = "\n\n---\n\n".join(context_parts)
+            if not relevant_chunks:
+                no_info = (
+                    "I couldn't find relevant information in the "
+                    "document to answer this question."
+                )
+                return RAGAnswer(
+                    question=question,
+                    answer=no_info,
+                    sources=[],
+                    score=0.0,
+                )
 
-        # Generate answer using LLM
-        llm = self._get_llm()
-        messages = [
-            Message(
-                role="system",
-                content=(
-                    "You are a helpful assistant that answers questions based on "
-                    "the provided document context. Always cite the source when "
-                    "providing information. If the answer cannot be found in the "
-                    "context, say so clearly. Be concise and accurate."
+            # Build context
+            context_parts = []
+            sources = []
+            for chunk, _score in relevant_chunks:
+                source = chunk.metadata.get("source", "unknown")
+                context_parts.append(f"[Source: {source}]\n{chunk.text}")
+                sources.append((source, chunk.text))
+
+            context = "\n\n---\n\n".join(context_parts)
+
+            # Generate answer using LLM
+            llm = self._get_llm()
+            messages = [
+                Message(
+                    role="system",
+                    content=(
+                        "You are a helpful assistant that answers questions based on "
+                        "the provided document context. Always cite the source when "
+                        "providing information. If the answer cannot be found in the "
+                        "context, say so clearly. Be concise and accurate."
+                    ),
                 ),
-            ),
-            Message(
-                role="user",
-                content=(
-                    f"Context from documents:\n\n{context}\n\n"
-                    f"Question: {question}\n\n"
-                    "Please provide a clear, accurate answer based on the context above."
+                Message(
+                    role="user",
+                    content=(
+                        f"Context from documents:\n\n{context}\n\n"
+                        f"Question: {question}\n\n"
+                        "Please provide a clear, accurate answer based on the context above."
+                    ),
                 ),
-            ),
-        ]
+            ]
 
-        answer = llm.chat(messages)
+            answer = llm.chat(messages)
 
-        avg_score = sum(s for _, s in relevant_chunks) / len(relevant_chunks)
+            avg_score = sum(s for _, s in relevant_chunks) / len(relevant_chunks)
 
-        return RAGAnswer(
-            question=question,
-            answer=answer,
-            sources=sources,
-            score=avg_score,
-        )
+            return RAGAnswer(
+                question=question,
+                answer=answer,
+                sources=sources,
+                score=avg_score,
+            )
+        except RAGError:
+            raise
+        except Exception as exc:
+            raise RAGError(f"RAG query failed: {exc}") from exc
 
     def list_indexed_sources(self) -> list[str]:
         """Return list of indexed document sources."""

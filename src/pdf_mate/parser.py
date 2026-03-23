@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import fitz  # PyMuPDF
 import pdfplumber
+
+from .exceptions import ParseError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -69,9 +74,9 @@ class PDFContent:
             lines.append("\n## Tables\n")
             for table in self.tables:
                 lines.append(f"### Table on page {table.page + 1}\n")
-                for row in table.rows:
+                for i, row in enumerate(table.rows):
                     lines.append("| " + " | ".join(row) + " |")
-                    if table.rows.index(row) == 0:
+                    if i == 0:
                         lines.append("| " + " | ".join(["---"] * len(row)) + " |")
         return "\n".join(lines)
 
@@ -97,22 +102,31 @@ class PDFParser:
 
         Returns:
             PDFContent object with all extracted data.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ParseError: If parsing fails for any other reason.
         """
         file_path = Path(file_path)
         if not file_path.exists():
-            raise FileNotFoundError(f"PDF file not found: {file_path}")
+            raise ParseError(f"PDF file not found: {file_path}")
 
-        # Extract text and tables using pdfplumber
-        text_blocks, tables = self._extract_text_and_tables(file_path)
+        try:
+            # Extract text and tables using pdfplumber
+            text_blocks, tables = self._extract_text_and_tables(file_path)
 
-        # Extract images using PyMuPDF
-        images: list[ImageInfo] = []
-        if self.extract_images:
-            images = self._extract_images(file_path)
+            # Extract images using PyMuPDF
+            images: list[ImageInfo] = []
+            if self.extract_images:
+                images = self._extract_images(file_path)
 
-        # Get page count
-        with fitz.open(str(file_path)) as doc:
-            page_count = len(doc)
+            # Get page count
+            with fitz.open(str(file_path)) as doc:
+                page_count = len(doc)
+        except ParseError:
+            raise
+        except Exception as exc:
+            raise ParseError(f"Failed to parse PDF '{file_path.name}': {exc}") from exc
 
         return PDFContent(
             filename=file_path.name,
@@ -194,6 +208,10 @@ class PDFParser:
                             )
                             img_index += 1
                     except Exception:
+                        logger.debug(
+                            "Failed to extract image xref=%s on page %d",
+                            xref, page_num, exc_info=True,
+                        )
                         continue
 
         return images
@@ -209,7 +227,19 @@ class PDFParser:
 
         Returns:
             List of image bytes (PNG format).
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            IndexError: If ``page_num`` is out of range.
         """
         file_path = Path(file_path)
-        pix = fitz.open(str(file_path))[page_num].get_pixmap(dpi=self.dpi)
-        return [pix.tobytes("png")]
+        if not file_path.exists():
+            raise ParseError(f"PDF file not found: {file_path}")
+
+        with fitz.open(str(file_path)) as doc:
+            if page_num < 0 or page_num >= len(doc):
+                raise IndexError(
+                    f"Page {page_num} out of range (document has {len(doc)} pages)"
+                )
+            pix = doc[page_num].get_pixmap(dpi=self.dpi)
+            return [pix.tobytes("png")]

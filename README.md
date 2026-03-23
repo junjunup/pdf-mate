@@ -7,9 +7,7 @@
 <p align="center">
   <a href="https://github.com/junjunup/pdf-mate/stargazers"><img src="https://img.shields.io/github/stars/junjunup/pdf-mate?style=social" alt="Stars"></a>
   <a href="https://github.com/junjunup/pdf-mate/releases"><img src="https://img.shields.io/github/v/release/junjunup/pdf-mate" alt="Release"></a>
-  <a href="https://pypi.org/project/pdf-mate/"><img src="https://img.shields.io/pypi/v/pdf-mate" alt="PyPI"></a>
   <a href="https://github.com/junjunup/pdf-mate/blob/main/LICENSE"><img src="https://img.shields.io/github/license/junjunup/pdf-mate" alt="License"></a>
-  <a href="https://github.com/junjunup/pdf-mate/actions"><img src="https://img.shields.io/github/actions/workflow/status/junjunup/pdf-mate/ci.yml" alt="CI"></a>
 </p>
 
 ---
@@ -26,22 +24,40 @@
 - **Local Embedding** — Privacy-first with local sentence-transformers (no API needed)
 - **CLI Tool** — Fast command-line interface for power users
 - **Web UI** — Clean Gradio interface for interactive exploration
-- **Batch Processing** — Process multiple documents efficiently
 
 ## 🚀 Quick Start
 
 ### Installation
 
+The core package is lightweight (~100 MB). Heavy optional dependencies are split into extras:
+
 ```bash
-# Install with pip
+# Core only (PDF parsing + CLI — lightweight, no API deps)
 pip install pdf-mate
 
-# Or install with OCR support
+# With LLM support (OpenAI API + summarization)
+pip install pdf-mate[llm]
+
+# With RAG support (LLM + ChromaDB vector store + Q&A)
+pip install pdf-mate[rag]
+
+# With local embedding support (~2 GB, includes sentence-transformers)
+pip install pdf-mate[local]
+
+# With Web UI (includes Gradio)
+pip install pdf-mate[web]
+
+# With OCR support (requires Tesseract system package)
 pip install pdf-mate[ocr]
 
-# Or install for development
-pip install pdf-mate[dev]
+# Everything
+pip install pdf-mate[all]
+
+# For development
+pip install -e ".[dev]"
 ```
+
+> **Note:** The core package only includes PDF parsing and CLI — no OpenAI or ChromaDB dependencies. Install `pdf-mate[rag]` for the full RAG Q&A experience, or `pdf-mate[llm]` for summarization only.
 
 ### CLI Usage
 
@@ -104,9 +120,9 @@ from pdf_mate.rag import RAGEngine, RAGConfig
 
 # Setup RAG engine with local embeddings
 config = RAGConfig(
-    embedding_provider="local",
+    embedding_provider="local",  # requires: pip install pdf-mate[local]
     embedding_model="all-MiniLM-L6-v2",
-    llm_model="gpt-3.5-turbo",
+    llm_model="gpt-4o-mini",
 )
 engine = RAGEngine(config)
 
@@ -132,7 +148,7 @@ parser = PDFParser()
 content = parser.parse("report.pdf")
 
 config = SummaryConfig(
-    llm_model="gpt-3.5-turbo",
+    llm_model="gpt-4o-mini",
     style="bullets",  # "concise", "detailed", or "bullets"
 )
 summarizer = DocumentSummarizer(config)
@@ -154,12 +170,27 @@ for point in summary.key_points:
 ```python
 from pdf_mate.ocr import OCREngine
 
+# requires: pip install pdf-mate[ocr]
 engine = OCREngine(language="eng+chi_sim")
 results = engine.extract_text_from_pdf("scanned.pdf")
 
 for page_num, text in results:
     print(f"--- Page {page_num + 1} ---")
     print(text)
+```
+
+### Exception Handling
+
+```python
+from pdf_mate import PDFParser, PDFMateError, ParseError, LLMError
+
+try:
+    parser = PDFParser()
+    content = parser.parse("document.pdf")
+except ParseError as e:
+    print(f"Parse failed: {e}")
+except PDFMateError as e:
+    print(f"pdf-mate error: {e}")
 ```
 
 ## 🔧 Configuration
@@ -184,39 +215,24 @@ ollama pull llama3
 pdf-mate ask document.pdf --model llama3 --base-url http://localhost:11434/v1
 ```
 
-### CLI Options
-
-```
-Usage: pdf-mate [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  --version, -v  Show version.
-  --help         Show this message and exit.
-
-Commands:
-  parse     Parse a PDF and extract text, tables, and images.
-  ocr       Extract text from scanned PDFs using OCR.
-  summary   Generate an AI-powered summary of a PDF document.
-  ask       Ask questions about a PDF document using RAG.
-  web       Launch the Gradio Web UI.
-```
-
 ## 🏗️ Architecture
 
 ```
 pdf-mate/
 ├── src/pdf_mate/
-│   ├── parser.py      # PDF text, table, image extraction
-│   ├── ocr.py         # OCR for scanned documents
-│   ├── llm.py         # Multi-backend LLM interface
-│   ├── embedding.py   # Text vectorization
-│   ├── storage.py     # ChromaDB vector store
-│   ├── rag.py         # RAG pipeline (chunking + retrieval + generation)
-│   ├── summary.py     # Document summarization
-│   ├── cli.py         # CLI interface (Typer)
-│   └── web.py         # Gradio Web UI
-├── tests/             # pytest test suite
-└── pyproject.toml     # Project configuration
+│   ├── __init__.py     # Public API exports
+│   ├── exceptions.py   # Custom exception hierarchy
+│   ├── parser.py       # PDF text, table, image extraction
+│   ├── ocr.py          # OCR for scanned documents
+│   ├── llm.py          # Multi-backend LLM interface
+│   ├── embedding.py    # Text vectorization
+│   ├── storage.py      # ChromaDB vector store
+│   ├── rag.py          # RAG pipeline (chunking + retrieval + generation)
+│   ├── summary.py      # Document summarization
+│   ├── cli.py          # CLI interface (Typer + Rich)
+│   └── web.py          # Gradio Web UI
+├── tests/              # pytest test suite
+└── pyproject.toml      # Project configuration
 ```
 
 ## 🛠️ Development
@@ -235,7 +251,7 @@ pytest
 # Run tests with coverage
 pytest --cov=pdf_mate
 
-# Code formatting
+# Lint
 ruff check src/ tests/
 
 # Type checking
@@ -245,20 +261,19 @@ mypy src/
 ## 📋 Requirements
 
 - Python >= 3.10
-- Dependencies are automatically installed with pip
 
 **Core dependencies:**
 - `pdfplumber` — PDF text and table extraction
-- `PyMuPDF` — PDF image extraction
-- `openai` — LLM API client
-- `chromadb` — Vector database
-- `sentence-transformers` — Local embeddings
-- `tiktoken` — Token counting
+- `PyMuPDF` — PDF image extraction and page rendering
+- `numpy` — Numerical operations
 - `typer` + `rich` — CLI framework
-- `gradio` — Web UI
 
-**Optional:**
-- `pytesseract` + `Pillow` — OCR support
+**Optional extras:**
+- `openai` + `tiktoken` — LLM API client (`pip install pdf-mate[llm]`)
+- `chromadb` — Vector database for RAG (`pip install pdf-mate[rag]`)
+- `sentence-transformers` — Local embeddings (`pip install pdf-mate[local]`)
+- `gradio` — Web UI (`pip install pdf-mate[web]`)
+- `pytesseract` + `Pillow` — OCR support (`pip install pdf-mate[ocr]`)
 
 ## 📜 License
 

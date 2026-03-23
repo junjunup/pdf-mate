@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import fitz  # PyMuPDF
+
+from .exceptions import OCRError
+
+logger = logging.getLogger(__name__)
 
 
 class OCREngine:
@@ -30,6 +35,7 @@ class OCREngine:
         self.dpi = dpi
         self.tessdata_path = tessdata_path
         self._tesseract = None
+        self._pil_image = None
 
     def _get_tesseract(self):
         """Lazy import and configure pytesseract."""
@@ -44,10 +50,10 @@ class OCREngine:
                 if self.tessdata_path:
                     pytesseract.pytesseract.tessdata_dir_prefix = self.tessdata_path
             except ImportError:
-                raise ImportError(
+                raise OCRError(
                     "pytesseract and Pillow are required for OCR. "
                     "Install them with: pip install pdf-mate[ocr]"
-                )
+                ) from None
         return self._tesseract, self._pil_image
 
     def extract_text_from_pdf(
@@ -64,9 +70,9 @@ class OCREngine:
         """
         file_path = Path(file_path)
         if not file_path.exists():
-            raise FileNotFoundError(f"PDF file not found: {file_path}")
+            raise OCRError(f"PDF file not found: {file_path}")
 
-        tess, PILImage = self._get_tesseract()
+        tess, pil_image = self._get_tesseract()
         results: list[tuple[int, str]] = []
 
         with fitz.open(str(file_path)) as doc:
@@ -74,7 +80,7 @@ class OCREngine:
             for page_num in pages:
                 page = doc[page_num]
                 pix = page.get_pixmap(dpi=self.dpi)
-                img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                img = pil_image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
                 text = tess.image_to_string(img, lang=self.language).strip()
                 if text:
@@ -93,10 +99,10 @@ class OCREngine:
         """
         image_path = Path(image_path)
         if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
+            raise OCRError(f"Image file not found: {image_path}")
 
-        tess, PILImage = self._get_tesseract()
-        img = PILImage.open(str(image_path))
+        tess, pil_image = self._get_tesseract()
+        img = pil_image.open(str(image_path))
         return tess.image_to_string(img, lang=self.language).strip()
 
     def detect_language(self, file_path: str | Path, page_num: int = 0) -> str:

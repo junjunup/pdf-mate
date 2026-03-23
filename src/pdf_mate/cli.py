@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import typer
@@ -9,9 +10,10 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
+from rich.table import Table as RichTable
 
 from . import __version__
+from .exceptions import PDFMateError
 
 app = typer.Typer(
     name="pdf-mate",
@@ -34,7 +36,6 @@ def main(
     ),
 ):
     """pdf-mate: AI-powered PDF toolkit."""
-    pass
 
 
 # ─── Parse Command ────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ def parse_pdf(
     output: Path | None = typer.Option(
         None, "--output", "-o", help="Save extracted text to a file."
     ),
-    format: str = typer.Option(
+    output_format: str = typer.Option(
         "text", "--format", "-f", help="Output format: text, markdown."
     ),
     extract_images: bool = typer.Option(
@@ -56,14 +57,19 @@ def parse_pdf(
     """Parse a PDF and extract text, tables, and images."""
     from .parser import PDFParser
 
-    with Progress(
-        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
-    ):
-        parser = PDFParser(extract_images=extract_images)
-        content = parser.parse(file_path)
+    try:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
+            progress.add_task(description="Parsing PDF...", total=None)
+            parser = PDFParser(extract_images=extract_images)
+            content = parser.parse(file_path)
+    except PDFMateError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
     # Display info
-    info = Table(title="PDF Information")
+    info = RichTable(title="PDF Information")
     info.add_column("Property", style="cyan")
     info.add_column("Value", style="green")
     info.add_row("Filename", content.filename)
@@ -74,7 +80,7 @@ def parse_pdf(
     console.print(info)
 
     # Display content
-    if format == "markdown":
+    if output_format == "markdown":
         output_text = content.markdown_text
         console.print(Markdown(output_text))
     else:
@@ -82,10 +88,7 @@ def parse_pdf(
 
     # Save to file
     if output:
-        if format == "markdown":
-            text = content.markdown_text
-        else:
-            text = content.full_text
+        text = content.markdown_text if output_format == "markdown" else content.full_text
         output.write_text(text, encoding="utf-8")
         console.print(f"\n[green]Text saved to {output}[/green]")
 
@@ -106,11 +109,16 @@ def ocr_pdf(
 
     console.print("[yellow]Starting OCR (this may take a while)...[/yellow]")
 
-    with Progress(
-        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
-    ):
-        engine = OCREngine(language=language)
-        results = engine.extract_text_from_pdf(file_path)
+    try:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
+            progress.add_task(description="Running OCR...", total=None)
+            engine = OCREngine(language=language)
+            results = engine.extract_text_from_pdf(file_path)
+    except PDFMateError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
     for page_num, text in results:
         console.print(Panel(text, title=f"Page {page_num + 1}"))
@@ -132,7 +140,7 @@ def summarize_pdf(
     style: str = typer.Option(
         "concise", "--style", "-s", help="Summary style: concise, detailed, bullets."
     ),
-    model: str = typer.Option("gpt-3.5-turbo", "--model", "-m", help="LLM model name."),
+    model: str = typer.Option("gpt-4o-mini", "--model", "-m", help="LLM model name."),
     api_key: str | None = typer.Option(
         None, "--api-key", help="LLM API key (or set OPENAI_API_KEY env var)."
     ),
@@ -141,38 +149,39 @@ def summarize_pdf(
     ),
 ):
     """Generate an AI-powered summary of a PDF document."""
-    import os
-
     from .parser import PDFParser
-    from .rag import RAGConfig
-    from .summary import SummaryConfig, DocumentSummarizer
+    from .summary import DocumentSummarizer, SummaryConfig
 
-    with Progress(
-        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
-    ):
-        # Parse PDF
-        console.print("[cyan]Parsing PDF...[/cyan]")
-        parser = PDFParser()
-        content = parser.parse(file_path)
+    try:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
+            task = progress.add_task(description="Parsing PDF...", total=None)
+            parser = PDFParser()
+            content = parser.parse(file_path)
 
-        if not content.full_text.strip():
-            console.print("[red]No text found in PDF. Try OCR mode for scanned documents.[/red]")
-            raise typer.Exit(1)
+            if not content.full_text.strip():
+                console.print(
+                    "[red]No text found in PDF. Try OCR mode for scanned documents.[/red]"
+                )
+                raise typer.Exit(1)
 
-        # Generate summary
-        console.print("[cyan]Generating summary...[/cyan]")
-        config = SummaryConfig(
-            llm_model=model,
-            llm_api_key=api_key or os.environ.get("OPENAI_API_KEY"),
-            llm_base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
-            style=style,
-        )
-        summarizer = DocumentSummarizer(config)
-        doc_summary = summarizer.summarize(
-            text=content.full_text,
-            filename=content.filename,
-            page_count=content.page_count,
-        )
+            progress.update(task, description="Generating summary...")
+            config = SummaryConfig(
+                llm_model=model,
+                llm_api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+                llm_base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+                style=style,
+            )
+            summarizer = DocumentSummarizer(config)
+            doc_summary = summarizer.summarize(
+                text=content.full_text,
+                filename=content.filename,
+                page_count=content.page_count,
+            )
+    except PDFMateError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
     # Display results
     console.print(Panel(doc_summary.title, title="Document Title", style="bold green"))
@@ -181,7 +190,7 @@ def summarize_pdf(
     key_points_md = "\n".join(f"- {p}" for p in doc_summary.key_points)
     console.print(Markdown(f"## Key Points\n\n{key_points_md}"))
 
-    stats = Table(title="Document Statistics")
+    stats = RichTable(title="Document Statistics")
     stats.add_column("Metric", style="cyan")
     stats.add_column("Value", style="green")
     stats.add_row("Pages", str(doc_summary.page_count))
@@ -199,7 +208,7 @@ def ask_question(
     question: str = typer.Option(
         None, "--question", "-q", help="Question to ask (omit for interactive mode)."
     ),
-    model: str = typer.Option("gpt-3.5-turbo", "--model", "-m", help="LLM model name."),
+    model: str = typer.Option("gpt-4o-mini", "--model", "-m", help="LLM model name."),
     embedding: str = typer.Option(
         "local", "--embedding", "-e", help="Embedding provider: local, openai."
     ),
@@ -212,37 +221,40 @@ def ask_question(
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of context chunks."),
 ):
     """Ask questions about a PDF document using RAG."""
-    import os
-
     from .parser import PDFParser
     from .rag import RAGConfig, RAGEngine
 
-    with Progress(
-        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
-    ):
-        # Parse PDF
-        console.print("[cyan]Parsing and indexing PDF...[/cyan]")
-        parser = PDFParser()
-        content = parser.parse(file_path)
+    try:
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
+            task = progress.add_task(description="Parsing and indexing PDF...", total=None)
+            parser = PDFParser()
+            content = parser.parse(file_path)
 
-        if not content.full_text.strip():
-            console.print("[red]No text found in PDF. Try OCR mode for scanned documents.[/red]")
-            raise typer.Exit(1)
+            if not content.full_text.strip():
+                console.print(
+                    "[red]No text found in PDF. Try OCR mode for scanned documents.[/red]"
+                )
+                raise typer.Exit(1)
 
-        # Setup RAG
-        config = RAGConfig(
-            llm_model=model,
-            llm_api_key=api_key or os.environ.get("OPENAI_API_KEY"),
-            llm_base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
-            embedding_provider=embedding,
-            retrieval_top_k=top_k,
-        )
-        engine = RAGEngine(config)
-        engine.index_document(
-            text=content.full_text,
-            source_name=content.filename,
-        )
-        console.print(f"[green]Indexed {engine._store.count} chunks.[/green]")
+            progress.update(task, description="Setting up RAG engine...")
+            config = RAGConfig(
+                llm_model=model,
+                llm_api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+                llm_base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+                embedding_provider=embedding,
+                retrieval_top_k=top_k,
+            )
+            engine = RAGEngine(config)
+            chunk_count = engine.index_document(
+                text=content.full_text,
+                source_name=content.filename,
+            )
+            console.print(f"[green]Indexed {chunk_count} chunks.[/green]")
+    except PDFMateError as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
     # Interactive Q&A
     console.print("\n[bold cyan]PDF Q&A Mode[/bold cyan]")
@@ -259,13 +271,17 @@ def ask_question(
         if not q.strip():
             continue
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ):
-            console.print("[cyan]Thinking...[/cyan]")
-            answer = engine.query(q)
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(description="Thinking...", total=None)
+                answer = engine.query(q)
+        except PDFMateError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            continue
 
         console.print(Panel(answer.answer, title="Answer", border_style="green"))
 
@@ -283,7 +299,7 @@ def ask_question(
 
 @app.command(name="web")
 def launch_web(
-    host: str = typer.Option("0.0.0.0", "--host", help="Server host."),
+    host: str = typer.Option("127.0.0.1", "--host", help="Server host."),
     port: int = typer.Option(7860, "--port", "-p", help="Server port."),
     share: bool = typer.Option(False, "--share", help="Create a public share link."),
 ):
