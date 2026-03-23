@@ -112,17 +112,21 @@ class PDFParser:
             raise ParseError(f"PDF file not found: {file_path}")
 
         try:
-            # Extract text and tables using pdfplumber
-            text_blocks, tables = self._extract_text_and_tables(file_path)
+            # Extract text, tables, and page count using pdfplumber
+            text_blocks, tables, page_count = self._extract_text_and_tables(file_path)
 
-            # Extract images using PyMuPDF
+            # Extract images using PyMuPDF (optional, graceful fallback)
             images: list[ImageInfo] = []
             if self.extract_images:
-                images = self._extract_images(file_path)
-
-            # Get page count
-            with fitz.open(str(file_path)) as doc:
-                page_count = len(doc)
+                try:
+                    images = self._extract_images(file_path)
+                except Exception:
+                    logger.warning(
+                        "Failed to extract images from '%s' via PyMuPDF, "
+                        "skipping image extraction.",
+                        file_path.name,
+                        exc_info=True,
+                    )
         except ParseError:
             raise
         except Exception as exc:
@@ -138,12 +142,13 @@ class PDFParser:
 
     def _extract_text_and_tables(
         self, file_path: Path
-    ) -> tuple[list[TextBlock], list[Table]]:
-        """Extract text blocks and tables using pdfplumber."""
+    ) -> tuple[list[TextBlock], list[Table], int]:
+        """Extract text blocks, tables, and page count using pdfplumber."""
         text_blocks: list[TextBlock] = []
         tables: list[Table] = []
 
         with pdfplumber.open(str(file_path)) as pdf:
+            page_count = len(pdf.pages)
             for page_num, page in enumerate(pdf.pages):
                 # Extract text
                 text = page.extract_text()
@@ -176,7 +181,7 @@ class PDFParser:
                                 )
                             )
 
-        return text_blocks, tables
+        return text_blocks, tables, page_count
 
     def _extract_images(self, file_path: Path) -> list[ImageInfo]:
         """Extract embedded images from PDF using PyMuPDF."""

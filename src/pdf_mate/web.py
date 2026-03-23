@@ -184,7 +184,6 @@ def create_app():
 
     with gr.Blocks(
         title="pdf-mate",
-        theme=gr.themes.Soft(),
     ) as demo:
         # Session state (not global mutable dict)
         rag_state = gr.State(value={})
@@ -214,7 +213,7 @@ def create_app():
                 info_output = gr.Markdown(label="Document Info")
                 with gr.Row():
                     text_output = gr.Textbox(
-                        label="Extracted Text", lines=10, show_copy_button=True
+                        label="Extracted Text", lines=10
                     )
                     md_output = gr.Markdown(label="Markdown Preview")
 
