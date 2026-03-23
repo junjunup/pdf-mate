@@ -41,14 +41,27 @@ def create_app():
             logger.exception("Unexpected error in parse handler")
             return f"**Error:** {exc}", "", ""
 
+        full_text = content.full_text
+        markdown_text = content.markdown_text
+        char_count = len(full_text)
+        truncated = ""
+
+        # For very large documents, truncate with a notice
+        max_chars = 200_000  # ~100 pages of Chinese text
+        if char_count > max_chars:
+            full_text = full_text[:max_chars]
+            markdown_text = markdown_text[:max_chars]
+            truncated = f" *(truncated to {max_chars:,} chars, original: {char_count:,})*"
+
         info_lines = [
             f"**Filename:** {content.filename}",
             f"**Pages:** {content.page_count}",
             f"**Text blocks:** {len(content.text_blocks)}",
             f"**Tables:** {len(content.tables)}",
             f"**Images:** {len(content.images)}",
+            f"**Characters:** {char_count:,}{truncated}",
         ]
-        return "\n".join(info_lines), content.full_text[:10000], content.markdown_text[:10000]
+        return "\n".join(info_lines), full_text, markdown_text
 
     # ─── Summary Tab ──────────────────────────────────────────────────────────
 
