@@ -8,6 +8,7 @@
   <a href="https://github.com/junjunup/pdf-mate/stargazers"><img src="https://img.shields.io/github/stars/junjunup/pdf-mate?style=social" alt="Stars"></a>
   <a href="https://github.com/junjunup/pdf-mate/releases"><img src="https://img.shields.io/github/v/release/junjunup/pdf-mate" alt="Release"></a>
   <a href="https://github.com/junjunup/pdf-mate/blob/main/LICENSE"><img src="https://img.shields.io/github/license/junjunup/pdf-mate" alt="License"></a>
+  <a href="./README_CN.md"><img src="https://img.shields.io/badge/文档-中文版-orange" alt="中文文档"></a>
 </p>
 
 ---
